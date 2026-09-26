@@ -1,18 +1,50 @@
 const Booking = require('../models/Booking');
 const Flight = require('../models/Flight');
 const { generatePNR, generateTransactionId } = require('../utils/generatePNR');
-
-const createBooking = async (req, res) => {
+// Create a pending booking (before payment)
+const createPendingBooking = async (req, res) => {
   try {
-    const { flightId, passengers, seatClass = 'economy', paymentMethod = 'credit_card' } = req.body;
-    
+    const {
+      flightId,
+      passengers,
+      seatClass = 'economy'
+    } = req.body;
+
     if (!flightId || !passengers || passengers.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide flight ID and passenger details'
+        message: 'Flight ID and passenger details are required'
       });
     }
-    
+
+    if (passengers.length > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 5 passengers per booking'
+      });
+    }
+
+    for (const p of passengers) {
+      if (!p.name || p.name.trim().length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each passenger must have a name of at least 2 characters'
+        });
+      }
+      if (!p.age || p.age < 1 || p.age > 120) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each passenger must have an age between 1 and 120'
+        });
+      }
+      if (!['Male', 'Female', 'Other'].includes(p.gender)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Gender must be Male, Female, or Other'
+        });
+      }
+    }
+
     const flight = await Flight.findById(flightId);
     if (!flight) {
       return res.status(404).json({
@@ -20,26 +52,286 @@ const createBooking = async (req, res) => {
         message: 'Flight not found'
       });
     }
-    
+
     const passengerCount = passengers.length;
     if (flight.availableSeats < passengerCount) {
       return res.status(400).json({
         success: false,
-        message: `Only ${flight.availableSeats} seats available. Please reduce number of passengers.`
+        message: `Only ${flight.availableSeats} seats available`
       });
     }
-    
-    const farePerPassenger = flight.fare[seatClass] || flight.fare.economy;
+
+    const farePerPassenger = flight.fare[seatClass];
+    if (!farePerPassenger) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid seat class'
+      });
+    }
+
     const totalAmount = farePerPassenger * passengerCount;
-    
-    const bookingReference = generatePNR();
-    
+
+    // Generate unique PNR
+    let bookingReference;
+    let exists = true;
+    while (exists) {
+      bookingReference = generatePNR();
+      exists = await Booking.exists({ bookingReference });
+    }
+
+    // Reserve seats temporarily
+    flight.availableSeats -= passengerCount;
+    await flight.save();
+
     const booking = new Booking({
       bookingReference,
       userId: req.user.id,
       flightId,
-      passengers: passengers.map(p => ({
-        ...p,
+      passengers: passengers.map((p) => ({
+        name: p.name.trim(),
+        age: Number(p.age),
+        gender: p.gender,
+        class: seatClass,
+        seatNumber: null
+      })),
+      totalAmount,
+      status: 'pending',
+      paymentStatus: 'pending'
+    });
+
+    await booking.save();
+
+    const populated = await Booking.findById(booking._id)
+      .populate('flightId')
+      .populate('userId', 'name email phone');
+
+    res.status(201).json({
+      success: true,
+      message: 'Booking created. Proceed to payment.',
+      booking: populated
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Process payment
+const processPayment = async (req, res) => {
+  try {
+    const { paymentMethod, cardNumber, cardName, expiry, cvv, upiId } = req.body;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+
+    if (booking.userId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    if (booking.status === 'confirmed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking already paid'
+      });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking has been cancelled'
+      });
+    }
+
+    // Validate payment method
+    const validMethods = ['credit_card', 'debit_card', 'upi', 'net_banking'];
+    if (!validMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment method'
+      });
+    }
+
+    // Validate card details for card payments
+    if (paymentMethod === 'credit_card' || paymentMethod === 'debit_card') {
+      if (!cardNumber || cardNumber.replace(/\s/g, '').length !== 16) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid card number'
+        });
+      }
+      if (!cardName || cardName.trim().length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cardholder name is required'
+        });
+      }
+      if (!expiry || !/^\d{2}\/\d{2}$/.test(expiry)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid expiry date (use MM/YY)'
+        });
+      }
+      if (!cvv || cvv.length !== 3) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid CVV'
+        });
+      }
+    }
+
+    // Validate UPI
+    if (paymentMethod === 'upi') {
+      if (!upiId || !upiId.includes('@')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid UPI ID'
+        });
+      }
+    }
+
+    // Simulate payment processing
+    // In production, integrate Razorpay or Stripe here
+    const paymentSuccess = true;
+
+    if (!paymentSuccess) {
+      booking.paymentStatus = 'failed';
+      await booking.save();
+      return res.status(400).json({
+        success: false,
+        message: 'Payment failed. Please try again.'
+      });
+    }
+
+    // Update booking with payment info
+    booking.status = 'confirmed';
+    booking.paymentStatus = 'completed';
+    booking.paymentDetails = {
+      method: paymentMethod,
+      transactionId:
+        'TXN_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+      paymentDate: new Date()
+    };
+
+    await booking.save();
+
+    const populated = await Booking.findById(booking._id)
+      .populate('flightId')
+      .populate('userId', 'name email phone');
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment successful',
+      booking: populated
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+const createBooking = async (req, res) => {
+  try {
+    const {
+      flightId,
+      passengers,
+      seatClass = 'economy',
+      paymentMethod = 'credit_card'
+    } = req.body;
+
+    // Validate inputs
+    if (!flightId || !passengers || passengers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Flight ID and passenger details are required'
+      });
+    }
+
+    if (passengers.length > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 5 passengers per booking'
+      });
+    }
+
+    // Validate each passenger
+    for (const p of passengers) {
+      if (!p.name || p.name.trim().length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each passenger must have a name of at least 2 characters'
+        });
+      }
+      if (!p.age || p.age < 1 || p.age > 120) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each passenger must have an age between 1 and 120'
+        });
+      }
+      if (!['Male', 'Female', 'Other'].includes(p.gender)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Gender must be Male, Female, or Other'
+        });
+      }
+    }
+
+    // Get flight
+    const flight = await Flight.findById(flightId);
+    if (!flight) {
+      return res.status(404).json({
+        success: false,
+        message: 'Flight not found'
+      });
+    }
+
+    // Check seat availability
+    const passengerCount = passengers.length;
+    if (flight.availableSeats < passengerCount) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${flight.availableSeats} seats available`
+      });
+    }
+
+    // Calculate total
+    const farePerPassenger = flight.fare[seatClass];
+    if (!farePerPassenger) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid seat class'
+      });
+    }
+
+    const totalAmount = farePerPassenger * passengerCount;
+
+    // Generate unique PNR
+    let bookingReference;
+    let exists = true;
+    while (exists) {
+      bookingReference = generatePNR();
+      exists = await Booking.exists({ bookingReference });
+    }
+
+    // Create booking
+    const booking = new Booking({
+      bookingReference,
+      userId: req.user.id,
+      flightId,
+      passengers: passengers.map((p) => ({
+        name: p.name.trim(),
+        age: Number(p.age),
+        gender: p.gender,
         class: seatClass,
         seatNumber: null
       })),
@@ -51,20 +343,22 @@ const createBooking = async (req, res) => {
         transactionId: generateTransactionId()
       }
     });
-    
+
+    // Reduce available seats
     flight.availableSeats -= passengerCount;
     await flight.save();
-    
+
     await booking.save();
-    
-    const populatedBooking = await Booking.findById(booking._id)
+
+    // Populate for response
+    const populated = await Booking.findById(booking._id)
       .populate('flightId')
       .populate('userId', 'name email phone');
-    
+
     res.status(201).json({
       success: true,
-      message: 'Booking created successfully!',
-      booking: populatedBooking
+      message: 'Booking confirmed successfully',
+      booking: populated
     });
   } catch (error) {
     res.status(500).json({
@@ -79,7 +373,7 @@ const getUserBookings = async (req, res) => {
     const bookings = await Booking.find({ userId: req.user.id })
       .populate('flightId')
       .sort({ createdAt: -1 });
-    
+
     res.status(200).json({
       success: true,
       count: bookings.length,
@@ -98,21 +392,24 @@ const getBookingById = async (req, res) => {
     const booking = await Booking.findById(req.params.id)
       .populate('flightId')
       .populate('userId', 'name email phone');
-    
+
     if (!booking) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
-    if (booking.userId._id.toString() !== req.user.id && req.user.role !== 'admin') {
+
+    if (
+      booking.userId._id.toString() !== req.user.id &&
+      req.user.role !== 'admin'
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to view this booking'
+        message: 'Not authorized'
       });
     }
-    
+
     res.status(200).json({
       success: true,
       booking
@@ -127,19 +424,19 @@ const getBookingById = async (req, res) => {
 
 const getBookingByPNR = async (req, res) => {
   try {
-    const booking = await Booking.findOne({ 
-      bookingReference: req.params.pnr.toUpperCase() 
+    const booking = await Booking.findOne({
+      bookingReference: req.params.pnr.toUpperCase()
     })
       .populate('flightId')
       .populate('userId', 'name email phone');
-    
+
     if (!booking) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
+
     res.status(200).json({
       success: true,
       booking
@@ -156,48 +453,53 @@ const cancelBooking = async (req, res) => {
   try {
     const { reason } = req.body;
     const booking = await Booking.findById(req.params.id);
-    
+
     if (!booking) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
-    if (booking.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+
+    if (
+      booking.userId.toString() !== req.user.id &&
+      req.user.role !== 'admin'
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to cancel this booking'
+        message: 'Not authorized'
       });
     }
-    
+
     if (booking.status === 'cancelled') {
       return res.status(400).json({
         success: false,
-        message: 'Booking is already cancelled'
+        message: 'Booking already cancelled'
       });
     }
-    
+
     const flight = await Flight.findById(booking.flightId);
-    if (new Date(flight.departureTime) < new Date()) {
+    if (flight && new Date(flight.departureTime) < new Date()) {
       return res.status(400).json({
         success: false,
         message: 'Cannot cancel booking for past flights'
       });
     }
-    
+
     booking.status = 'cancelled';
     booking.cancellationDate = new Date();
     booking.cancellationReason = reason || 'Cancelled by user';
-    
-    flight.availableSeats += booking.passengers.length;
-    await flight.save();
-    
+
+    if (flight) {
+      flight.availableSeats += booking.passengers.length;
+      await flight.save();
+    }
+
     await booking.save();
-    
+
     res.status(200).json({
       success: true,
-      message: 'Booking cancelled successfully',
+      message: 'Booking cancelled',
       booking
     });
   } catch (error) {
@@ -212,30 +514,30 @@ const confirmPayment = async (req, res) => {
   try {
     const { paymentMethod } = req.body;
     const booking = await Booking.findById(req.params.id);
-    
+
     if (!booking) {
       return res.status(404).json({
         success: false,
         message: 'Booking not found'
       });
     }
-    
+
     if (booking.userId.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized'
       });
     }
-    
+
     booking.paymentStatus = 'completed';
     booking.paymentDetails.paymentDate = new Date();
-    booking.paymentDetails.method = paymentMethod || booking.paymentDetails.method;
-    
+    if (paymentMethod) booking.paymentDetails.method = paymentMethod;
+
     await booking.save();
-    
+
     res.status(200).json({
       success: true,
-      message: 'Payment confirmed successfully',
+      message: 'Payment confirmed',
       booking
     });
   } catch (error) {
@@ -248,6 +550,8 @@ const confirmPayment = async (req, res) => {
 
 module.exports = {
   createBooking,
+  createPendingBooking,
+  processPayment,
   getUserBookings,
   getBookingById,
   getBookingByPNR,

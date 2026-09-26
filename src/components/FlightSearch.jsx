@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  FaSearch,
+  FaPlane,
+  FaExchangeAlt,
+  FaMapMarkerAlt,
+  FaCalendarAlt,
+  FaUsers
+} from 'react-icons/fa';
+import { MdFlightTakeoff, MdFlightLand } from 'react-icons/md';
 
 const FlightSearch = () => {
   const [searchParams, setSearchParams] = useState({
@@ -9,86 +18,122 @@ const FlightSearch = () => {
     class: 'economy'
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   const handleChange = (e) => {
+    setSearchParams({ ...searchParams, [e.target.name]: e.target.value });
+    if (error) setError('');
+  };
+
+  const handleSwap = () => {
     setSearchParams({
       ...searchParams,
-      [e.target.name]: e.target.value
+      origin: searchParams.destination,
+      destination: searchParams.origin
     });
   };
 
-  const handleSearch = async (e) => {
+  const handleSearch = (e) => {
     e.preventDefault();
-    setLoading(true);
-    
-    try {
-      const queryParams = new URLSearchParams(searchParams).toString();
-      navigate(`/search?${queryParams}`);
-    } catch (error) {
-      console.error('Search failed:', error);
-      alert('Failed to search flights. Please try again.');
-    } finally {
-      setLoading(false);
+    setError('');
+
+    if (!searchParams.origin || !searchParams.destination) {
+      return setError('Please enter both origin and destination');
     }
+    if (searchParams.origin.toUpperCase() === searchParams.destination.toUpperCase()) {
+      return setError('Origin and destination cannot be the same');
+    }
+    if (!searchParams.date) {
+      return setError('Please select a travel date');
+    }
+
+    setLoading(true);
+    const queryParams = new URLSearchParams(searchParams).toString();
+    navigate(`/search?${queryParams}`);
+    setLoading(false);
   };
 
+  const today = new Date().toISOString().split('T')[0];
+
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Search Flights</h2>
-      
+    <div className="w-full">
       <form onSubmit={handleSearch} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              From
-            </label>
-            <input
-              type="text"
-              name="origin"
-              value={searchParams.origin}
-              onChange={handleChange}
-              placeholder="City or Airport Code (e.g., NYC)"
-              className="input-field"
-              required
-            />
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {error}
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              To
+        )}
+
+        {/* From and To with swap button */}
+        <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
+          <div className="md:col-span-5">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <MdFlightTakeoff className="inline mr-1" /> From
             </label>
-            <input
-              type="text"
-              name="destination"
-              value={searchParams.destination}
-              onChange={handleChange}
-              placeholder="City or Airport Code (e.g., LAX)"
-              className="input-field"
-              required
-            />
+            <div className="relative">
+              <FaMapMarkerAlt className="absolute left-3 top-3.5 text-gray-400" />
+              <input
+                type="text"
+                name="origin"
+                value={searchParams.origin}
+                onChange={handleChange}
+                placeholder="City or airport code (e.g., JFK)"
+                className="input-field pl-10 uppercase"
+                maxLength="3"
+              />
+            </div>
+          </div>
+
+          <div className="md:col-span-1 flex justify-center">
+            <button
+              type="button"
+              onClick={handleSwap}
+              className="p-2 bg-primary-100 text-primary-600 rounded-full hover:bg-primary-200 transition"
+              title="Swap origin and destination"
+            >
+              <FaExchangeAlt />
+            </button>
+          </div>
+
+          <div className="md:col-span-5">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <MdFlightLand className="inline mr-1" /> To
+            </label>
+            <div className="relative">
+              <FaMapMarkerAlt className="absolute left-3 top-3.5 text-gray-400" />
+              <input
+                type="text"
+                name="destination"
+                value={searchParams.destination}
+                onChange={handleChange}
+                placeholder="City or airport code (e.g., LAX)"
+                className="input-field pl-10 uppercase"
+                maxLength="3"
+              />
+            </div>
           </div>
         </div>
 
+        {/* Date and Class */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Travel Date
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <FaCalendarAlt className="inline mr-1" /> Travel Date
             </label>
             <input
               type="date"
               name="date"
               value={searchParams.date}
               onChange={handleChange}
+              min={today}
               className="input-field"
-              required
-              min={new Date().toISOString().split('T')[0]}
             />
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Class
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <FaUsers className="inline mr-1" /> Class
             </label>
             <select
               name="class"
@@ -106,9 +151,9 @@ const FlightSearch = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full btn-primary py-3 text-lg"
+          className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2"
         >
-          {loading ? 'Searching...' : '🔍 Search Flights'}
+          <FaSearch /> {loading ? 'Searching...' : 'Search Flights'}
         </button>
       </form>
     </div>

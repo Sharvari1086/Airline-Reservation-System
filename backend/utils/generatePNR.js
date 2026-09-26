@@ -8,7 +8,7 @@ const generatePNR = () => {
 };
 
 const generateTransactionId = () => {
-  return 'TXN_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+  return 'TXN_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
 };
 
 module.exports = { generatePNR, generateTransactionId };

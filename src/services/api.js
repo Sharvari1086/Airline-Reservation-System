@@ -51,11 +51,14 @@ export const flightService = {
 
 export const bookingService = {
   createBooking: (data) => api.post('/bookings', data),
+  createPendingBooking: (data) => api.post('/bookings/pending', data),
+  processPayment: (id, data) => api.post(`/bookings/${id}/pay`, data),
   getMyBookings: () => api.get('/bookings'),
   getBookingById: (id) => api.get(`/bookings/${id}`),
   getBookingByPNR: (pnr) => api.get(`/bookings/pnr/${pnr}`),
   cancelBooking: (id, reason) => api.put(`/bookings/${id}/cancel`, { reason }),
-  confirmPayment: (id, paymentMethod) => api.put(`/bookings/${id}/payment`, { paymentMethod })
+  confirmPayment: (id, paymentMethod) =>
+    api.put(`/bookings/${id}/payment`, { paymentMethod })
 };
 
 export const adminService = {
