@@ -111,18 +111,21 @@ const SearchResults = () => {
   };
 
   const formatTime = (date) =>
-    new Date(date).toLocaleTimeString('en-US', {
+    new Date(date).toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
     });
 
   const formatDate = (date) =>
-    new Date(date).toLocaleDateString('en-US', {
+    new Date(date).toLocaleDateString('en-IN', {
       weekday: 'short',
       month: 'short',
       day: 'numeric'
     });
+
+  const formatPrice = (value) =>
+    '₹' + Number(value || 0).toLocaleString('en-IN');
 
   const filteredFlights = flights
     .filter((flight) => {
@@ -157,7 +160,6 @@ const SearchResults = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Search Bar Section */}
       <div className="bg-primary-600 py-6 shadow-lg">
         <div className="container-custom">
           <form onSubmit={handleSearch} className="bg-white rounded-xl shadow-lg p-4">
@@ -257,7 +259,6 @@ const SearchResults = () => {
         </div>
       </div>
 
-      {/* Results Section */}
       <div className="container-custom py-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
           <div>
@@ -270,7 +271,7 @@ const SearchResults = () => {
                 <strong>{searchForm.destination}</strong> on{' '}
                 <strong>
                   {searchForm.date
-                    ? new Date(searchForm.date).toLocaleDateString()
+                    ? new Date(searchForm.date).toLocaleDateString('en-IN')
                     : ''}
                 </strong>{' '}
                 | {filteredFlights.length} flights found
@@ -348,7 +349,7 @@ const SearchResults = () => {
 
                   <div className="mb-5">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Price Range (USD)
+                      Price Range (₹)
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       <input
@@ -414,9 +415,7 @@ const SearchResults = () => {
                         className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition"
                       >
                         <div className="flex flex-col md:flex-row justify-between gap-5">
-                          {/* Flight Info */}
                           <div className="flex-1">
-                            {/* Header Row */}
                             <div className="flex items-center gap-3 mb-3">
                               <div className="bg-primary-100 p-2 rounded-lg">
                                 <FaPlane className="text-primary-600" />
@@ -445,7 +444,6 @@ const SearchResults = () => {
                               </span>
                             </div>
 
-                            {/* Route */}
                             <div className="flex items-center gap-3 md:gap-6">
                               <div className="text-center">
                                 <div className="text-xl font-bold text-gray-800">
@@ -488,7 +486,6 @@ const SearchResults = () => {
                               </div>
                             </div>
 
-                            {/* Extra Info */}
                             <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs text-gray-500">
                               <span className="flex items-center gap-1">
                                 <FaCalendarAlt /> {formatDate(flight.departureTime)}
@@ -502,14 +499,13 @@ const SearchResults = () => {
                             </div>
                           </div>
 
-                          {/* Price and Buttons Column */}
                           <div className="flex flex-col justify-between md:min-w-[180px] gap-3">
                             <div className="text-right">
                               <div className="text-xs text-gray-500 uppercase mb-1">
                                 {flight.requestedClass || 'Economy'}
                               </div>
                               <div className="text-3xl font-bold text-primary-600">
-                                ${fare}
+                                {formatPrice(fare)}
                               </div>
                               <div className="text-xs text-gray-500">
                                 per passenger

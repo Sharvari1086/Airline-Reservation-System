@@ -1,15 +1,10 @@
+const mongoose = require('mongoose');
+const Flight = require('../models/Flight');
+
+// Search flights
 const searchFlights = async (req, res) => {
   try {
-    const {
-      origin,
-      destination,
-      date,
-      class: seatClass,
-      airline,
-      minPrice,
-      maxPrice,
-      sortBy
-    } = req.query;
+    const { origin, destination, date, class: seatClass, airline } = req.query;
 
     const query = {};
 
@@ -30,28 +25,7 @@ const searchFlights = async (req, res) => {
 
     const fareClass = seatClass || 'economy';
 
-    // Build price filter
-    if (minPrice || maxPrice) {
-      const farePath = `fare.${fareClass}`;
-      query[farePath] = {};
-      if (minPrice) query[farePath].$gte = Number(minPrice);
-      if (maxPrice) query[farePath].$lte = Number(maxPrice);
-    }
-
-    let sortOptions = { departureTime: 1 };
-    if (sortBy === 'price_low') {
-      sortOptions = { [`fare.${fareClass}`]: 1 };
-    } else if (sortBy === 'price_high') {
-      sortOptions = { [`fare.${fareClass}`]: -1 };
-    } else if (sortBy === 'duration') {
-      sortOptions = { departureTime: 1 };
-    } else if (sortBy === 'departure_early') {
-      sortOptions = { departureTime: 1 };
-    } else if (sortBy === 'departure_late') {
-      sortOptions = { departureTime: -1 };
-    }
-
-    const flights = await Flight.find(query).sort(sortOptions);
+    const flights = await Flight.find(query).sort({ departureTime: 1 });
 
     const formattedFlights = flights.map((flight) => {
       const flightObj = flight.toObject();
@@ -64,7 +38,6 @@ const searchFlights = async (req, res) => {
       };
     });
 
-    // Get unique airlines for filter dropdown
     const airlines = await Flight.distinct('airline');
 
     res.status(200).json({
@@ -74,9 +47,94 @@ const searchFlights = async (req, res) => {
       flights: formattedFlights
     });
   } catch (error) {
+    console.error('searchFlights error:', error.message);
     res.status(500).json({
       success: false,
       message: error.message
     });
   }
+};
+
+// Get flight by ID
+const getFlightById = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid flight ID format'
+      });
+    }
+
+    const flight = await Flight.findById(req.params.id);
+
+    if (!flight) {
+      return res.status(404).json({
+        success: false,
+        message: 'Flight not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      flight
+    });
+  } catch (error) {
+    console.error('getFlightById error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get flight by number
+const getFlightByNumber = async (req, res) => {
+  try {
+    const flight = await Flight.findOne({
+      flightNumber: req.params.flightNumber.toUpperCase()
+    });
+
+    if (!flight) {
+      return res.status(404).json({
+        success: false,
+        message: 'Flight not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      flight
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get destinations
+const getDestinations = async (req, res) => {
+  try {
+    const origins = await Flight.distinct('origin.city');
+    const destinations = await Flight.distinct('destination.city');
+
+    res.status(200).json({
+      success: true,
+      origins,
+      destinations
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+module.exports = {
+  searchFlights,
+  getFlightById,
+  getFlightByNumber,
+  getDestinations
 };

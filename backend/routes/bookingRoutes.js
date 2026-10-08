@@ -9,7 +9,9 @@ const {
   getBookingById,
   getBookingByPNR,
   cancelBooking,
-  confirmPayment
+  confirmPayment,
+  rescheduleBooking,
+  getBookedSeats
 } = require('../controllers/bookingController');
 
 router.use(protect);
@@ -19,8 +21,10 @@ router.post('/pending', createPendingBooking);
 router.post('/:id/pay', processPayment);
 router.get('/', getUserBookings);
 router.get('/pnr/:pnr', getBookingByPNR);
+router.get('/flight/:flightId/seats', getBookedSeats);
 router.put('/:id/cancel', cancelBooking);
 router.put('/:id/payment', confirmPayment);
+router.put('/:id/reschedule', rescheduleBooking);
 router.get('/:id', getBookingById);
 
 module.exports = router;

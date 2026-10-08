@@ -24,6 +24,9 @@ const FlightDetails = () => {
   const [error, setError] = useState('');
   const [selectedClass, setSelectedClass] = useState('economy');
 
+  const formatPrice = (value) =>
+    '₹' + Number(value || 0).toLocaleString('en-IN');
+
   useEffect(() => {
     const loadFlight = async () => {
       try {
@@ -40,7 +43,7 @@ const FlightDetails = () => {
   }, [id]);
 
   const formatDate = (date) =>
-    new Date(date).toLocaleDateString('en-US', {
+    new Date(date).toLocaleDateString('en-IN', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -48,7 +51,7 @@ const FlightDetails = () => {
     });
 
   const formatTime = (date) =>
-    new Date(date).toLocaleTimeString('en-US', {
+    new Date(date).toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -328,7 +331,7 @@ const FlightDetails = () => {
                   )}
                 </div>
                 <div className="text-2xl font-bold text-primary-600 mb-2">
-                  ${flight.fare[cls.id]}
+                  {formatPrice(flight.fare[cls.id])}
                 </div>
                 <div className="text-xs text-gray-500">{cls.description}</div>
               </button>
@@ -349,7 +352,7 @@ const FlightDetails = () => {
               <div>
                 <div className="text-xs text-gray-500">Fare per passenger</div>
                 <div className="text-3xl font-bold text-primary-600">
-                  ${selectedFare}
+                  {formatPrice(selectedFare)}
                 </div>
               </div>
               <div>

@@ -4,9 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  headers: { 'Content-Type': 'application/json' }
 });
 
 api.interceptors.request.use(
@@ -26,7 +24,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      if (
+        window.location.pathname !== '/login' &&
+        window.location.pathname !== '/register'
+      ) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -36,6 +39,8 @@ export const authService = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getProfile: () => api.get('/auth/me'),
+  updateProfile: (data) => api.put('/auth/profile', data),
+  changePassword: (data) => api.put('/auth/change-password', data),
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -56,7 +61,10 @@ export const bookingService = {
   getMyBookings: () => api.get('/bookings'),
   getBookingById: (id) => api.get(`/bookings/${id}`),
   getBookingByPNR: (pnr) => api.get(`/bookings/pnr/${pnr}`),
+  getBookedSeats: (flightId) => api.get(`/bookings/flight/${flightId}/seats`),
   cancelBooking: (id, reason) => api.put(`/bookings/${id}/cancel`, { reason }),
+  rescheduleBooking: (id, newFlightId) =>
+    api.put(`/bookings/${id}/reschedule`, { newFlightId }),
   confirmPayment: (id, paymentMethod) =>
     api.put(`/bookings/${id}/payment`, { paymentMethod })
 };
@@ -67,7 +75,11 @@ export const adminService = {
   deleteFlight: (id) => api.delete(`/admin/flights/${id}`),
   getAllUsers: () => api.get('/admin/users'),
   getAllBookings: () => api.get('/admin/bookings'),
-  getReports: () => api.get('/admin/reports')
+  getBookingsByFlight: (flightId) =>
+    api.get(`/admin/bookings/flight/${flightId}`),
+  getReports: () => api.get('/admin/reports'),
+  getFlightReports: () => api.get('/admin/reports/flights'),
+  getBookingTrends: () => api.get('/admin/reports/trends')
 };
 
 export default api;

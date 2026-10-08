@@ -329,12 +329,12 @@ const createBooking = async (req, res) => {
       userId: req.user.id,
       flightId,
       passengers: passengers.map((p) => ({
-        name: p.name.trim(),
-        age: Number(p.age),
-        gender: p.gender,
-        class: seatClass,
-        seatNumber: null
-      })),
+  name: p.name.trim(),
+  age: Number(p.age),
+  gender: p.gender,
+  class: seatClass,
+  seatNumber: p.seatNumber || null
+})),
       totalAmount,
       status: 'confirmed',
       paymentStatus: 'pending',
@@ -547,7 +547,135 @@ const confirmPayment = async (req, res) => {
     });
   }
 };
+// Reschedule booking to a different flight
+const rescheduleBooking = async (req, res) => {
+  try {
+    const { newFlightId } = req.body;
+    const oldBooking = await Booking.findById(req.params.id);
 
+    if (!oldBooking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found'
+      });
+    }
+
+    if (oldBooking.userId.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    if (oldBooking.status === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancelled bookings cannot be rescheduled'
+      });
+    }
+
+    if (!newFlightId) {
+      return res.status(400).json({
+        success: false,
+        message: 'New flight ID is required'
+      });
+    }
+
+    const oldFlight = await Flight.findById(oldBooking.flightId);
+    if (
+      oldFlight &&
+      new Date(oldFlight.departureTime).getTime() - Date.now() <
+        24 * 60 * 60 * 1000
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot reschedule within 24 hours of departure'
+      });
+    }
+
+    const newFlight = await Flight.findById(newFlightId);
+    if (!newFlight) {
+      return res.status(404).json({
+        success: false,
+        message: 'New flight not found'
+      });
+    }
+
+    const passengerCount = oldBooking.passengers.length;
+    if (newFlight.availableSeats < passengerCount) {
+      return res.status(400).json({
+        success: false,
+        message: `New flight has only ${newFlight.availableSeats} seats available`
+      });
+    }
+
+    const seatClass = oldBooking.passengers[0].class || 'economy';
+    const newFare = newFlight.fare[seatClass];
+    const newTotal = newFare * passengerCount;
+
+    // Restore seats on old flight
+    if (oldFlight) {
+      oldFlight.availableSeats += passengerCount;
+      await oldFlight.save();
+    }
+
+    // Reduce seats on new flight
+    newFlight.availableSeats -= passengerCount;
+    await newFlight.save();
+
+    // Update booking
+    oldBooking.flightId = newFlightId;
+    oldBooking.totalAmount = newTotal;
+    oldBooking.passengers = oldBooking.passengers.map((p) => ({
+      ...p.toObject(),
+      seatNumber: null
+    }));
+    await oldBooking.save();
+
+    const populated = await Booking.findById(oldBooking._id)
+      .populate('flightId')
+      .populate('userId', 'name email phone');
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking rescheduled successfully',
+      booking: populated
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+// Get booked seats for a flight
+const getBookedSeats = async (req, res) => {
+  try {
+    const { flightId } = req.params;
+
+    const bookings = await Booking.find({
+      flightId,
+      status: { $in: ['pending', 'confirmed'] }
+    }).select('passengers');
+
+    const bookedSeats = [];
+    bookings.forEach((booking) => {
+      booking.passengers.forEach((p) => {
+        if (p.seatNumber) {
+          bookedSeats.push(p.seatNumber);
+        }
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      count: bookedSeats.length,
+      bookedSeats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 module.exports = {
   createBooking,
   createPendingBooking,
@@ -556,5 +684,7 @@ module.exports = {
   getBookingById,
   getBookingByPNR,
   cancelBooking,
-  confirmPayment
+  confirmPayment,
+  rescheduleBooking,
+  getBookedSeats
 };

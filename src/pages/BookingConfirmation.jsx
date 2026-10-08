@@ -4,14 +4,13 @@ import {
   FaCheckCircle,
   FaPlane,
   FaUser,
-  FaCalendarAlt,
-  FaChair,
   FaPrint,
-  FaDownload,
   FaTimes,
-  FaArrowRight
+  FaArrowRight,
+  FaChair
 } from 'react-icons/fa';
 import { MdFlightTakeoff, MdFlightLand } from 'react-icons/md';
+import { toast } from 'react-toastify';
 import { bookingService } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -22,6 +21,9 @@ const BookingConfirmation = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(false);
+
+  const formatPrice = (value) =>
+    '₹' + Number(value || 0).toLocaleString('en-IN');
 
   useEffect(() => {
     const loadBooking = async () => {
@@ -50,10 +52,10 @@ const BookingConfirmation = () => {
     setCancelling(true);
     try {
       await bookingService.cancelBooking(bookingId, 'Cancelled by user');
-      alert('Booking cancelled successfully');
+      toast.success('Booking cancelled successfully');
       navigate('/my-bookings');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to cancel booking');
+      toast.error(err.response?.data?.message || 'Failed to cancel booking');
     } finally {
       setCancelling(false);
     }
@@ -80,10 +82,14 @@ const BookingConfirmation = () => {
 
   const flight = booking.flightId;
 
+  // Collect all assigned seats
+  const assignedSeats = booking.passengers
+    .map((p) => p.seatNumber)
+    .filter(Boolean);
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container-custom max-w-4xl">
-        {/* Success Banner */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
             <FaCheckCircle className="text-green-600 text-4xl" />
@@ -96,7 +102,7 @@ const BookingConfirmation = () => {
           </p>
         </div>
 
-        {/* PNR Card */}
+        {/* PNR Banner */}
         <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-xl shadow-lg p-6 text-white mb-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
@@ -117,7 +123,42 @@ const BookingConfirmation = () => {
           </div>
         </div>
 
-        {/* Flight Details Card */}
+        {/* Assigned Seats Summary (only if seats selected) */}
+        {assignedSeats.length > 0 && (
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-xl shadow-sm p-6 mb-6">
+            <div className="flex items-start gap-4">
+              <div className="bg-blue-600 p-3 rounded-full flex-shrink-0">
+                <FaChair className="text-white text-xl" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-blue-900 mb-3">
+                  Your Assigned Seats
+                </h2>
+                <div className="flex flex-wrap gap-3">
+                  {booking.passengers.map((p, i) =>
+                    p.seatNumber ? (
+                      <div
+                        key={i}
+                        className="bg-white border-2 border-blue-300 rounded-lg px-4 py-2 shadow-sm"
+                      >
+                        <div className="text-xs text-gray-500">{p.name}</div>
+                        <div className="text-xl font-bold text-blue-700">
+                          {p.seatNumber}
+                        </div>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+                <p className="text-xs text-blue-700 mt-4">
+                  Please be at the boarding gate 30 minutes before departure.
+                  Bring a valid ID matching your booking name.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Flight Details */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <FaPlane className="text-primary-600" /> Flight Details
@@ -141,7 +182,7 @@ const BookingConfirmation = () => {
                 <MdFlightTakeoff /> Departure
               </div>
               <div className="text-xl font-bold">
-                {new Date(flight.departureTime).toLocaleTimeString('en-US', {
+                {new Date(flight.departureTime).toLocaleTimeString('en-IN', {
                   hour: '2-digit',
                   minute: '2-digit',
                   hour12: true
@@ -151,7 +192,7 @@ const BookingConfirmation = () => {
                 {flight.origin.code} - {flight.origin.city}
               </div>
               <div className="text-xs text-gray-500">
-                {new Date(flight.departureTime).toLocaleDateString('en-US', {
+                {new Date(flight.departureTime).toLocaleDateString('en-IN', {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
@@ -169,7 +210,7 @@ const BookingConfirmation = () => {
                 <MdFlightLand /> Arrival
               </div>
               <div className="text-xl font-bold">
-                {new Date(flight.arrivalTime).toLocaleTimeString('en-US', {
+                {new Date(flight.arrivalTime).toLocaleTimeString('en-IN', {
                   hour: '2-digit',
                   minute: '2-digit',
                   hour12: true
@@ -179,7 +220,7 @@ const BookingConfirmation = () => {
                 {flight.destination.code} - {flight.destination.city}
               </div>
               <div className="text-xs text-gray-500">
-                {new Date(flight.arrivalTime).toLocaleDateString('en-US', {
+                {new Date(flight.arrivalTime).toLocaleDateString('en-IN', {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
@@ -190,7 +231,7 @@ const BookingConfirmation = () => {
           </div>
         </div>
 
-        {/* Passenger Details Card */}
+        {/* Passenger Details */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <FaUser className="text-primary-600" /> Passenger Details
@@ -231,8 +272,15 @@ const BookingConfirmation = () => {
                       {p.class === 'firstClass' ? 'First Class' : p.class}
                     </td>
                     <td className="py-3">
-                      {p.seatNumber || (
-                        <span className="text-gray-400 text-xs">TBA</span>
+                      {p.seatNumber ? (
+                        <span className="inline-flex items-center gap-1 bg-primary-100 text-primary-700 font-bold px-3 py-1 rounded-md text-sm">
+                          <FaChair className="text-xs" />
+                          {p.seatNumber}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center bg-gray-100 text-gray-500 text-xs px-3 py-1 rounded-md">
+                          TBA
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -240,9 +288,32 @@ const BookingConfirmation = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Seat Assignment Info (only if no seats selected) */}
+          {assignedSeats.length === 0 && (
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="bg-blue-600 p-2 rounded-full flex-shrink-0">
+                  <FaChair className="text-white text-sm" />
+                </div>
+                <div>
+                  <div className="font-medium text-blue-900 mb-1">
+                    Seat Assignment
+                  </div>
+                  <p className="text-sm text-blue-800">
+                    Your seat
+                    {booking.passengers.length !== 1 ? 's will' : ' will'} be
+                    assigned automatically at check-in. Check in 24 hours before
+                    departure to view your assigned seat
+                    {booking.passengers.length !== 1 ? 's' : ''}.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Payment Summary Card */}
+        {/* Payment Summary */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Payment Summary</h2>
 
@@ -254,13 +325,13 @@ const BookingConfirmation = () => {
             <div className="flex justify-between">
               <span className="text-gray-600">Fare per passenger</span>
               <span className="font-medium">
-                ${(booking.totalAmount / booking.passengers.length).toFixed(2)}
+                {formatPrice(booking.totalAmount / booking.passengers.length)}
               </span>
             </div>
             <div className="flex justify-between border-t pt-2 text-base">
               <span className="font-semibold">Total Amount</span>
               <span className="font-bold text-primary-600 text-xl">
-                ${booking.totalAmount}
+                {formatPrice(booking.totalAmount)}
               </span>
             </div>
             <div className="flex justify-between pt-2">
@@ -275,6 +346,14 @@ const BookingConfirmation = () => {
                 {booking.paymentStatus}
               </span>
             </div>
+            {booking.paymentDetails?.transactionId && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Transaction ID</span>
+                <span className="font-medium text-xs">
+                  {booking.paymentDetails.transactionId}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

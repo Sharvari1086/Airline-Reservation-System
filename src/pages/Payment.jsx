@@ -8,8 +8,10 @@ import {
   FaArrowLeft,
   FaUniversity,
   FaMobileAlt,
-  FaMoneyCheckAlt
+  FaMoneyCheckAlt,
+  FaChair
 } from 'react-icons/fa';
+import { toast } from 'react-toastify';
 import { bookingService } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -30,6 +32,9 @@ const Payment = () => {
     cvv: ''
   });
   const [upiId, setUpiId] = useState('');
+
+  const formatPrice = (value) =>
+    '₹' + Number(value || 0).toLocaleString('en-IN');
 
   useEffect(() => {
     const loadBooking = async () => {
@@ -121,11 +126,12 @@ const Payment = () => {
       };
 
       const response = await bookingService.processPayment(bookingId, payload);
-
-      // Redirect to confirmation
+      toast.success('Payment successful');
       navigate(`/confirmation/${response.data.booking._id}`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Payment failed. Please try again.');
+      const msg = err.response?.data?.message || 'Payment failed. Please try again.';
+      setError(msg);
+      toast.error(msg);
       setProcessing(false);
     }
   };
@@ -144,6 +150,11 @@ const Payment = () => {
       </div>
     );
   }
+
+  // Collect assigned seats
+  const assignedSeats = booking.passengers
+    .map((p) => p.seatNumber)
+    .filter(Boolean);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -166,7 +177,6 @@ const Payment = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Payment Form */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm p-6">
               {error && (
@@ -177,7 +187,6 @@ const Payment = () => {
 
               <h2 className="text-lg font-semibold mb-4">Payment Method</h2>
 
-              {/* Method Selector */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                 {[
                   { id: 'credit_card', label: 'Credit Card', icon: <FaCreditCard /> },
@@ -207,7 +216,6 @@ const Payment = () => {
               </div>
 
               <form onSubmit={handlePay}>
-                {/* Card Fields */}
                 {(paymentMethod === 'credit_card' ||
                   paymentMethod === 'debit_card') && (
                   <div className="space-y-4">
@@ -273,7 +281,6 @@ const Payment = () => {
                   </div>
                 )}
 
-                {/* UPI Field */}
                 {paymentMethod === 'upi' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -298,7 +305,6 @@ const Payment = () => {
                   </div>
                 )}
 
-                {/* Net Banking */}
                 {paymentMethod === 'net_banking' && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
                     You will be redirected to your bank's secure portal to
@@ -318,20 +324,18 @@ const Payment = () => {
                     </>
                   ) : (
                     <>
-                      <FaLock /> Pay ${booking.totalAmount}
+                      <FaLock /> Pay {formatPrice(booking.totalAmount)}
                     </>
                   )}
                 </button>
 
                 <p className="text-center text-xs text-gray-500 mt-4">
-                  By completing this payment, you agree to our Terms of Service.
-                  This is a demo system; no real charge will be made.
+                  This is a demo system. No real charge will be made.
                 </p>
               </form>
             </div>
           </div>
 
-          {/* Booking Summary */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-sm p-6 sticky top-6">
               <h2 className="text-lg font-semibold mb-4">Order Summary</h2>
@@ -357,7 +361,7 @@ const Payment = () => {
                 <div>
                   <div className="text-xs text-gray-500">Departure</div>
                   <div className="font-medium">
-                    {new Date(booking.flightId.departureTime).toLocaleString()}
+                    {new Date(booking.flightId.departureTime).toLocaleString('en-IN')}
                   </div>
                 </div>
 
@@ -375,6 +379,42 @@ const Payment = () => {
                   </div>
                 </div>
 
+                {/* Seats Section */}
+                {assignedSeats.length > 0 && (
+                  <div className="border-t pt-3">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                      <FaChair /> Seats Selected
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {booking.passengers.map((p, i) =>
+                        p.seatNumber ? (
+                          <div
+                            key={i}
+                            className="bg-primary-50 border border-primary-200 rounded-md px-2 py-1 text-xs"
+                          >
+                            <span className="text-gray-600">{p.name.split(' ')[0]}:</span>{' '}
+                            <span className="font-bold text-primary-700">
+                              {p.seatNumber}
+                            </span>
+                          </div>
+                        ) : null
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {assignedSeats.length === 0 && (
+                  <div className="border-t pt-3">
+                    <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-800">
+                      <FaChair className="flex-shrink-0 mt-0.5" />
+                      <span>
+                        Seats will be assigned at check-in (24h before
+                        departure)
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="border-t pt-3">
                   <div className="text-xs text-gray-500">PNR</div>
                   <div className="font-bold text-primary-600">
@@ -385,7 +425,7 @@ const Payment = () => {
                 <div className="border-t pt-3 flex justify-between items-center">
                   <span className="font-medium text-gray-700">Total</span>
                   <span className="text-2xl font-bold text-primary-600">
-                    ${booking.totalAmount}
+                    {formatPrice(booking.totalAmount)}
                   </span>
                 </div>
               </div>
