@@ -127,6 +127,11 @@ const Payment = () => {
 
       const response = await bookingService.processPayment(bookingId, payload);
       toast.success('Payment successful');
+      if (response.data.emailNotification?.sent) {
+        toast.success('Booking details emailed to your login email');
+      } else if (response.data.emailNotification) {
+        toast.warning(response.data.emailNotification.message);
+      }
       navigate(`/confirmation/${response.data.booking._id}`);
     } catch (err) {
       const msg = err.response?.data?.message || 'Payment failed. Please try again.';

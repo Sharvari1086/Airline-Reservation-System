@@ -58,6 +58,7 @@ const bookingSchema = new mongoose.Schema(
       transactionId: String,
       paymentDate: Date
     },
+    confirmationEmailSentAt: Date,
     cancellationDate: Date,
     cancellationReason: String
   },

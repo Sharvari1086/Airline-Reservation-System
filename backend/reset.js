@@ -1,46 +1,39 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const bcrypt = require('bcryptjs');
+const path = require('node:path');
 const User = require('./models/User');
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const reset = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(process.env.MONGODB_URI, { dbName: 'aerolink' });
     console.log('Connected to MongoDB');
 
-    // Delete all old admins
-    const deleted = await User.deleteMany({ email: 'admin@aerolink.com' });
-    console.log('Deleted old admin(s):', deleted.deletedCount);
+    const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.ADMIN_PASSWORD;
+    if (!email || !password || !process.env.ADMIN_NAME || !process.env.ADMIN_PHONE) {
+      throw new Error(
+        'ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD, and ADMIN_PHONE must be set in backend/.env'
+      );
+    }
 
-    // Hash password manually
-    const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash('admin123', salt);
-    console.log('New hash:', hash);
+    let admin = await User.findOne({ email }).select('+password');
+    if (!admin) {
+      admin = new User({ email });
+    }
+    admin.name = process.env.ADMIN_NAME;
+    admin.password = password;
+    admin.phone = process.env.ADMIN_PHONE;
+    admin.role = 'admin';
+    await admin.save();
 
-    // Create admin directly with hashed password (bypass pre-save hook)
-    const admin = await User.create({
-      name: 'Admin User',
-      email: 'admin@aerolink.com',
-      password: 'admin123',
-      phone: '1234567890',
-      role: 'admin'
-    });
-
-    console.log('Admin created');
-    console.log('Email:', admin.email);
-    console.log('Role:', admin.role);
-    console.log('Stored hash:', admin.password);
-
-    // Test the password
-    const testResult = await bcrypt.compare('admin123', admin.password);
-    console.log('Password test result:', testResult);
-
-    process.exit(0);
+    console.log('Admin account reset:', admin.email);
   } catch (err) {
     console.error('Error:', err.message);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await mongoose.disconnect();
   }
 };
 

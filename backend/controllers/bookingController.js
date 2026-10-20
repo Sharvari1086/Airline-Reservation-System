@@ -1,6 +1,34 @@
 const Booking = require('../models/Booking');
 const Flight = require('../models/Flight');
 const { generatePNR, generateTransactionId } = require('../utils/generatePNR');
+const { sendBookingConfirmation } = require('../utils/bookingEmail');
+
+const emailBookingConfirmation = async (booking) => {
+  try {
+    if (booking.confirmationEmailSentAt) {
+      return { sent: true, message: 'Booking details were already emailed' };
+    }
+
+    await sendBookingConfirmation(booking);
+    booking.confirmationEmailSentAt = new Date();
+    await booking.save();
+    return {
+      sent: true,
+      message: `Booking details emailed to ${booking.userId.email}`
+    };
+  } catch (error) {
+    console.error(
+      `Booking confirmation email failed for ${booking._id}:`,
+      error.message
+    );
+    return {
+      sent: false,
+      message:
+        'Booking confirmed, but the confirmation email could not be sent. Check SMTP settings.'
+    };
+  }
+};
+
 // Create a pending booking (before payment)
 const createPendingBooking = async (req, res) => {
   try {
@@ -227,11 +255,13 @@ const processPayment = async (req, res) => {
     const populated = await Booking.findById(booking._id)
       .populate('flightId')
       .populate('userId', 'name email phone');
+    const emailNotification = await emailBookingConfirmation(populated);
 
     res.status(200).json({
       success: true,
       message: 'Payment successful',
-      booking: populated
+      booking: populated,
+      emailNotification
     });
   } catch (error) {
     res.status(500).json({
@@ -354,11 +384,13 @@ const createBooking = async (req, res) => {
     const populated = await Booking.findById(booking._id)
       .populate('flightId')
       .populate('userId', 'name email phone');
+    const emailNotification = await emailBookingConfirmation(populated);
 
     res.status(201).json({
       success: true,
       message: 'Booking confirmed successfully',
-      booking: populated
+      booking: populated,
+      emailNotification
     });
   } catch (error) {
     res.status(500).json({
@@ -529,16 +561,35 @@ const confirmPayment = async (req, res) => {
       });
     }
 
+    if (booking.paymentStatus === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment has already been confirmed'
+      });
+    }
+
     booking.paymentStatus = 'completed';
-    booking.paymentDetails.paymentDate = new Date();
-    if (paymentMethod) booking.paymentDetails.method = paymentMethod;
+    booking.status = 'confirmed';
+    const existingPaymentDetails = booking.paymentDetails?.toObject
+      ? booking.paymentDetails.toObject()
+      : booking.paymentDetails;
+    booking.paymentDetails = {
+      ...existingPaymentDetails,
+      paymentDate: new Date(),
+      ...(paymentMethod ? { method: paymentMethod } : {})
+    };
 
     await booking.save();
+    const populated = await Booking.findById(booking._id)
+      .populate('flightId')
+      .populate('userId', 'name email phone');
+    const emailNotification = await emailBookingConfirmation(populated);
 
     res.status(200).json({
       success: true,
       message: 'Payment confirmed',
-      booking
+      booking: populated,
+      emailNotification
     });
   } catch (error) {
     res.status(500).json({

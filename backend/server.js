@@ -1,10 +1,12 @@
+const dns = require('node:dns');
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const bcrypt = require('bcryptjs');
+const path = require('node:path');
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const User = require('./models/User');
 
@@ -20,50 +22,47 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const FIXED_ADMIN = {
-  name: 'Admin User',
-  email: 'admin@aerolink.com',
-  password: 'admin123',
-  phone: '1234567890',
+  name: process.env.ADMIN_NAME,
+  email: process.env.ADMIN_EMAIL?.trim().toLowerCase(),
+  password: process.env.ADMIN_PASSWORD,
+  phone: process.env.ADMIN_PHONE,
   role: 'admin'
 };
 
 const createFixedAdmin = async () => {
-  try {
-    const existingAdmin = await User.findOne({ email: FIXED_ADMIN.email });
-
-    if (!existingAdmin) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(FIXED_ADMIN.password, salt);
-
-      await User.create({
-        name: FIXED_ADMIN.name,
-        email: FIXED_ADMIN.email,
-        password: hashedPassword,
-        phone: FIXED_ADMIN.phone,
-        role: FIXED_ADMIN.role
-      });
-
-      console.log('Admin created');
-      console.log('Email:', FIXED_ADMIN.email);
-      console.log('Password:', FIXED_ADMIN.password);
-    } else {
-      console.log('Admin exists');
-      console.log('Email:', FIXED_ADMIN.email);
-      console.log('Password:', FIXED_ADMIN.password);
-    }
-  } catch (error) {
-    console.error('Admin creation error:', error.message);
+  if (
+    !FIXED_ADMIN.name ||
+    !FIXED_ADMIN.email ||
+    !FIXED_ADMIN.password ||
+    !FIXED_ADMIN.phone
+  ) {
+    throw new Error(
+      'ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD, and ADMIN_PHONE must be set in backend/.env'
+    );
   }
+
+  let admin = await User.findOne({ email: FIXED_ADMIN.email }).select('+password');
+  if (!admin) {
+    admin = new User(FIXED_ADMIN);
+  } else if (!(await admin.comparePassword(FIXED_ADMIN.password))) {
+    admin.password = FIXED_ADMIN.password;
+  }
+
+  admin.name = FIXED_ADMIN.name;
+  admin.phone = FIXED_ADMIN.phone;
+  admin.role = FIXED_ADMIN.role;
+  await admin.save();
+  console.log('Admin account is ready:', FIXED_ADMIN.email);
 };
 
 mongoose
-  .connect(process.env.MONGODB_URI)
+  .connect(process.env.MONGODB_URI, { dbName: 'aerolink' })
   .then(async () => {
     console.log('Connected to MongoDB Atlas');
     await createFixedAdmin();
   })
   .catch((err) => {
-    console.error('MongoDB Connection Error:', err.message);
+    console.error('Database startup error:', err.message);
   });
 
 app.use('/api/auth', authRoutes);
@@ -90,5 +89,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log('Server running on port', PORT);
   console.log('API URL: http://localhost:' + PORT + '/api');
-  console.log('Admin: admin@aerolink.com / admin123');
 });
